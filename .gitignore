@@ -1,0 +1,5 @@
+# bpark
+__pycache__/
+logs/
+model/
+seqcnn3_model.pkl/

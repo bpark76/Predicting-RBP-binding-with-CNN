@@ -1,5 +1,6 @@
 ### Avoid warning ###
 import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
 def warn(*args, **kwargs): pass
 warnings.warn = warn
 import os
@@ -9,14 +10,16 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+from tensorflow import keras
 from tensorflow.keras import datasets, layers, models
 from sklearn.model_selection import KFold
 from sklearn.metrics import roc_curve, auc
-from keras.models import load_model
+#from keras.models import load_model
 from tensorflow.keras.callbacks import ModelCheckpoint
 
 import math
 import gzip
+import bpark
 
 filename = ['00_PAI244','01_HITSCLIP_AGO2Karginov2013a_hg19', '02_HITSCLIP_AGO2Karginov2013c_hg19',
 '03_HITSCLIP_AGO2Karginov2013b_hg19','04_HITSCLIP_AGO2Karginov2013d_hg19','05_HITSCLIP_AGO2Karginov2013f_hg19',
@@ -45,6 +48,12 @@ log_dir = "logs/my_board/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 # 텐서보드 콜백 정의 하기
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
+my_callbacks = [
+    #tf.keras.callbacks.EarlyStopping(patience=2),
+    tf.keras.callbacks.ModelCheckpoint(filepath='./model/m{epoch:02d}-{loss:.2f}.h5'),
+    tf.keras.callbacks.TensorBoard(log_dir='./logs/'+ datetime.datetime.now().strftime("%Y%m%d-%H%M%S")),
+]
+
 def set_convolution_layer():
     input_shape = (98+k , 256) #Using Hocnnlb data , filename[1~31]
     #input_shape = (48+k , 256)  #Using Pyfeat data , filename[0]
@@ -68,7 +77,7 @@ def set_convolution_layer():
     model.add(layers.Activation('softmax'))
     
     model.summary()
-    model.compile(loss='categorical_crossentropy', optimizer='rmsprop',metrics=['accuracy'])
+    model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy', bpark.recall, bpark.precision, bpark.f1score])
 
     return model
 
@@ -128,8 +137,8 @@ def read_seq(seq_file,k):
 
 def buildseqmapper(degree):
     length = degree
-    #alphabet = ['A', 'C', 'G', 'T']  #Using Hocnnlb data
-    alphabet = ['A', 'C', 'G', 'U'] #Using Pypeat data
+    alphabet = ['A', 'C', 'G', 'T']  #Using Hocnnlb data
+    #alphabet = ['A', 'C', 'G', 'U'] #Using Pypeat data
     mapper = ['']
     while length > 0:
         mapper_len = len(mapper)
@@ -210,7 +219,8 @@ def train_HOCNN(data_file):
     #print(len(data["seq"][0][0]))
 
     my_classifier = set_convolution_layer()
-    my_classifier.fit(seq_data, y[0], epochs=50, callbacks=[tensorboard_callback])
+    #my_classifier.fit(seq_data, y[0], epochs=50, callbacks=[tensorboard_callback])
+    my_classifier.fit(seq_data, y[0], epochs=50, callbacks=[my_callbacks])
 
     print(my_classifier.summary())
 
@@ -232,7 +242,7 @@ def test_HOCNN(data_file):
     true_y = data["Y"]
 
     testing = data["seq"][0]  # it includes one-hot encoding sequence and structure
-    model = load_model('seqcnn3_model.pkl')
+    model = tf.keras.models.load_model('seqcnn3_model.pkl')
     
     predictions = model.predict(testing)
     predictions_label = transfer_label_from_prob(predictions[:, 1])
@@ -299,7 +309,7 @@ def KFold_validation(test_data):
         
         fpr,tpr,thresholds = roc_curve(Y_test,pred[:, 1])
         roc_auc = auc(fpr, tpr)
-        acc, sensitivity, specificity, MCC = calculate_performance(len(Y_test), predictions_label, Y_test)
+        acc, sensitivity, specificity, MCC, PPV, NPV= calculate_performance(len(Y_test), predictions_label, Y_test)
         cv_accuracy.append(acc)
         cv_sensitivity.append(sensitivity)
         cv_specificity.append(specificity)
@@ -370,8 +380,8 @@ def classify_with_predict_label(label, data_file):
 if __name__ == '__main__':
     # download lncRBPdata.zip from https://github.com/NWPU-903PR/HOCNNLB
     # data_file="./RBPdata1201/01_HITSCLIP_AGO2Karginov2013a_hg19/train/1/sequence.fa.gz"  was renamed
-    train_HOCNN(data_file= "Datasets/%s/train/%s/sequence.fa"%(filename[1],number))
-    test_HOCNN(data_file= "Datasets/%s/test/%s/sequence.fa"%(filename[1],number))
+    train_HOCNN(data_file= "Datasets/%s/train/%s/sequence.fa"%(filename[25],number))
+    #test_HOCNN(data_file= "Datasets/%s/test/%s/sequence.fa"%(filename[25],number))
 
     #KFold_validation(test_data= "Datasets/%s/train/%s/sequence.fa"%(filename[1],number))
     
